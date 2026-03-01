@@ -497,11 +497,13 @@
     /* Numbers, literals, booleans — medium blue */
     .hljs-number,
     .hljs-literal                  { color: #0033aa; }
-    /* Function/class titles — black bold */
-    .hljs-title,
+    /* Function/class titles — bold only for specific subclasses.
+       Generic .hljs-title and .hljs-section are left unstyled because
+       hljs tags plain text content in JSX/HTML as .hljs-section. */
     .hljs-title.function_,
-    .hljs-title.class_,
-    .hljs-section                  { color: #000000; font-weight: bold; }
+    .hljs-title.class_             { color: #000000; font-weight: bold; }
+    .hljs-title,
+    .hljs-section                  { color: #000000; }
     /* Types, tags, class names — dark teal */
     .hljs-type,
     .hljs-name,
