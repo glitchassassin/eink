@@ -9,7 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/highlight.js/highlight.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/highlight.min.js"></script>
   <style>
     /* Optimized for Boox Kaleido 3 color e-ink display.
        High contrast, no animations, limited color palette. */
@@ -446,7 +446,8 @@
 
     .diff-table {
       width: 100%;
-      border-collapse: collapse;
+      border-collapse: separate;
+      border-spacing: 0;
       font-family: var(--font-mono);
       font-size: 0.75rem;
       line-height: 1.5;
@@ -463,11 +464,21 @@
     }
 
     .diff-line-code { padding: 0 0.5rem; white-space: pre; }
-    .diff-sign { display: inline-block; width: 1ch; user-select: none; }
+    .diff-sign { display: inline-block; width: 1ch; user-select: none; font-weight: bold; }
+    tr.diff-add .diff-sign { color: var(--success); }
+    tr.diff-del .diff-sign { color: var(--failure); }
 
-    tr.diff-add { background: var(--diff-add-bg); }
-    tr.diff-del { background: var(--diff-del-bg); }
     tr.diff-hunk { background: var(--light-bg); color: var(--muted); font-style: italic; }
+
+    /* Grouped diff borders — no background, colored border box instead */
+    tr.diff-add td:first-child { border-left: 4px solid var(--success); }
+    tr.diff-del td:first-child { border-left: 4px solid var(--failure); }
+    tr.diff-add td:last-child  { border-right: 2px solid var(--success); }
+    tr.diff-del td:last-child  { border-right: 2px solid var(--failure); }
+    tr.diff-add.group-start td { border-top: 2px solid var(--success); }
+    tr.diff-add.group-end td   { border-bottom: 2px solid var(--success); }
+    tr.diff-del.group-start td { border-top: 2px solid var(--failure); }
+    tr.diff-del.group-end td   { border-bottom: 2px solid var(--failure); }
 
     /* ── Syntax highlighting theme (Kaleido 3 e-ink palette) ── */
     /* Base */
@@ -1026,41 +1037,53 @@
     const lang = filename ? getLanguage(filename) : null;
     const rawLines = patch.split('\n');
 
-    // Strip the diff prefix (+/-/space) from each line for highlighting.
-    // Hunk headers and no-newline markers get an empty string placeholder.
-    const codeParts = rawLines.map(l => {
-      if (l.startsWith('@@') || l === '\\ No newline at end of file') return '';
-      return l.length > 0 ? l.slice(1) : '';
+    // Classify each line
+    const types = rawLines.map(l => {
+      if (l.startsWith('@@')) return 'hunk';
+      if (l.startsWith('+'))  return 'add';
+      if (l.startsWith('-'))  return 'del';
+      return 'ctx';
     });
 
-    // Batch-highlight the whole file content so spans have full context
-    // (multi-line strings, block comments, etc. render correctly).
-    // hljs preserves newlines in output so splitting on '\n' re-aligns 1:1.
-    let hlLines = null;
-    if (lang && window.hljs && hljs.getLanguage(lang)) {
-      try {
-        const result = hljs.highlight(codeParts.join('\n'), { language: lang, ignoreIllegals: true });
-        hlLines = result.value.split('\n');
-      } catch (e) { /* fall back to escaped plain text */ }
-    }
+    // Mark the first/last row of each consecutive same-type run (add or del)
+    // so we can draw a border box around each group.
+    const groupStart = types.map((t, i) =>
+      (t === 'add' || t === 'del') && (i === 0 || types[i - 1] !== t)
+    );
+    const groupEnd = types.map((t, i) =>
+      (t === 'add' || t === 'del') && (i === types.length - 1 || types[i + 1] !== t)
+    );
 
-    const getCode = i => hlLines ? hlLines[i] : esc(codeParts[i]);
+    // Line-by-line syntax highlighting.
+    // Line-by-line avoids the unclosed-span problem that batch mode has when
+    // splitting highlighted HTML on '\n' across multi-line constructs.
+    const hl = (code) => {
+      if (!lang || !window.hljs || !hljs.getLanguage(lang)) return esc(code);
+      try {
+        return hljs.highlight(code, { language: lang, ignoreIllegals: true }).value;
+      } catch (_) { return esc(code); }
+    };
 
     let left = 0, right = 0;
     const rows = rawLines.map((line, i) => {
-      if (line.startsWith('@@')) {
+      const type = types[i];
+      const gs = groupStart[i] ? ' group-start' : '';
+      const ge = groupEnd[i]   ? ' group-end'   : '';
+      const code = (type === 'hunk') ? '' : hl(line.length > 0 ? line.slice(1) : '');
+
+      if (type === 'hunk') {
         const m = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)/);
         if (m) { left = parseInt(m[1]) - 1; right = parseInt(m[2]) - 1; }
         return `<tr class="diff-hunk"><td class="diff-line-num" colspan="2"></td><td class="diff-line-code">${esc(line)}</td></tr>`;
-      } else if (line.startsWith('+')) {
+      } else if (type === 'add') {
         right++;
-        return `<tr class="diff-add"><td class="diff-line-num"></td><td class="diff-line-num">${right}</td><td class="diff-line-code"><span class="diff-sign">+</span>${getCode(i)}</td></tr>`;
-      } else if (line.startsWith('-')) {
+        return `<tr class="diff-add${gs}${ge}"><td class="diff-line-num"></td><td class="diff-line-num">${right}</td><td class="diff-line-code"><span class="diff-sign">+</span>${code}</td></tr>`;
+      } else if (type === 'del') {
         left++;
-        return `<tr class="diff-del"><td class="diff-line-num">${left}</td><td class="diff-line-num"></td><td class="diff-line-code"><span class="diff-sign">-</span>${getCode(i)}</td></tr>`;
+        return `<tr class="diff-del${gs}${ge}"><td class="diff-line-num">${left}</td><td class="diff-line-num"></td><td class="diff-line-code"><span class="diff-sign">-</span>${code}</td></tr>`;
       } else {
         left++; right++;
-        return `<tr><td class="diff-line-num">${left}</td><td class="diff-line-num">${right}</td><td class="diff-line-code"><span class="diff-sign"> </span>${getCode(i)}</td></tr>`;
+        return `<tr><td class="diff-line-num">${left}</td><td class="diff-line-num">${right}</td><td class="diff-line-code"><span class="diff-sign"> </span>${code}</td></tr>`;
       }
     }).join('');
     return `<table class="diff-table">${rows}</table>`;
