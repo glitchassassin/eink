@@ -4,6 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>E-ink PR Viewer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
   <style>
     /* Optimized for Boox Kaleido 3 color e-ink display.
        High contrast, no animations, limited color palette. */
@@ -11,14 +16,14 @@
       --bg: #ffffff;
       --fg: #000000;
       --border: #000000;
-      --muted: #444444;
+      --muted: #222222;
       --light-bg: #f0f0f0;
       --success: #006600;
       --failure: #cc0000;
       --diff-add-bg: #e8f5e9;
       --diff-del-bg: #ffebee;
       --font-body: Georgia, "Times New Roman", serif;
-      --font-mono: "Courier New", Courier, monospace;
+      --font-mono: "Fira Code", "Courier New", Courier, monospace;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -211,7 +216,7 @@
 
     .label-tag {
       font-family: var(--font-mono);
-      font-size: 0.7rem;
+      font-size: 0.8rem;
       border: 1px solid var(--fg);
       padding: 0.1rem 0.4rem;
       text-transform: uppercase;
@@ -305,12 +310,58 @@
     /* Description */
     .detail-body {
       font-size: 0.95rem;
-      white-space: pre-wrap;
       overflow-wrap: break-word;
       line-height: 1.7;
       border-left: 3px solid var(--muted);
       padding-left: 1rem;
     }
+
+    /* Rendered markdown content */
+    .md-body h1, .md-body h2, .md-body h3,
+    .md-body h4, .md-body h5, .md-body h6 {
+      font-family: var(--font-body);
+      font-weight: bold;
+      margin: 1rem 0 0.4rem;
+      line-height: 1.3;
+    }
+    .md-body h1 { font-size: 1.2rem; border-bottom: 2px solid var(--fg); padding-bottom: 0.2rem; }
+    .md-body h2 { font-size: 1.05rem; border-bottom: 1px solid var(--fg); padding-bottom: 0.2rem; }
+    .md-body h3 { font-size: 1rem; }
+    .md-body h4, .md-body h5, .md-body h6 { font-size: 0.95rem; }
+    .md-body p { margin-bottom: 0.75rem; }
+    .md-body p:last-child { margin-bottom: 0; }
+    .md-body ul, .md-body ol { margin: 0.4rem 0 0.75rem 1.5rem; }
+    .md-body li { margin-bottom: 0.2rem; }
+    .md-body code {
+      font-family: var(--font-mono);
+      font-size: 0.85em;
+      background: var(--light-bg);
+      border: 1px solid #ccc;
+      padding: 0.1em 0.3em;
+    }
+    .md-body pre {
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      background: var(--light-bg);
+      border: 1px solid var(--border);
+      padding: 0.75rem;
+      overflow-x: auto;
+      margin: 0.75rem 0;
+      white-space: pre;
+    }
+    .md-body pre code { background: none; border: none; padding: 0; font-size: 1em; }
+    .md-body blockquote {
+      border-left: 3px solid var(--muted);
+      padding-left: 0.75rem;
+      color: var(--muted);
+      margin: 0.5rem 0;
+    }
+    .md-body a { color: var(--fg); font-weight: bold; }
+    .md-body table { border-collapse: collapse; margin: 0.75rem 0; font-size: 0.9rem; }
+    .md-body th, .md-body td { border: 1px solid var(--border); padding: 0.3rem 0.6rem; }
+    .md-body th { background: var(--light-bg); font-family: var(--font-mono); font-size: 0.82rem; }
+    .md-body hr { border: none; border-top: 2px solid var(--fg); margin: 1rem 0; }
+    .md-body img { max-width: 100%; }
 
     /* ── Checks ── */
     .check-list { list-style: none; }
@@ -322,7 +373,7 @@
       padding: 0.5rem 0;
       border-bottom: 1px solid var(--light-bg);
       font-family: var(--font-mono);
-      font-size: 0.82rem;
+      font-size: 0.85rem;
     }
 
     .check-item:last-child { border-bottom: none; }
@@ -335,7 +386,7 @@
     .check-name { flex: 1; font-weight: bold; }
 
     .check-conclusion {
-      font-size: 0.72rem;
+      font-size: 0.8rem;
       text-transform: uppercase;
       letter-spacing: 0.06em;
     }
@@ -344,7 +395,7 @@
     .check-conclusion.failure { color: var(--failure); }
     .check-conclusion.pending { color: var(--muted); }
 
-    .check-duration { color: var(--muted); font-size: 0.72rem; }
+    .check-duration { color: var(--muted); font-size: 0.8rem; }
 
     /* ── Files changed ── */
     .files-summary {
@@ -378,13 +429,13 @@
       word-break: break-all;
     }
 
-    .file-stats { font-family: var(--font-mono); font-size: 0.75rem; white-space: nowrap; }
+    .file-stats { font-family: var(--font-mono); font-size: 0.82rem; white-space: nowrap; }
     .adds { color: var(--success); }
     .dels { color: var(--failure); }
 
     .file-toggle {
       font-family: var(--font-mono);
-      font-size: 0.72rem;
+      font-size: 0.8rem;
       color: var(--muted);
       white-space: nowrap;
     }
@@ -441,7 +492,7 @@
       background: var(--light-bg);
       border-bottom: 1px solid var(--border);
       font-family: var(--font-mono);
-      font-size: 0.75rem;
+      font-size: 0.82rem;
     }
 
     .comment-author { font-weight: bold; }
@@ -449,7 +500,7 @@
 
     .review-badge {
       font-family: var(--font-mono);
-      font-size: 0.65rem;
+      font-size: 0.75rem;
       font-weight: bold;
       text-transform: uppercase;
       letter-spacing: 0.06em;
@@ -464,7 +515,7 @@
 
     .comment-file-ref {
       font-family: var(--font-mono);
-      font-size: 0.72rem;
+      font-size: 0.8rem;
       color: var(--muted);
       padding: 0.25rem 0.75rem;
       border-bottom: 1px solid var(--light-bg);
@@ -474,7 +525,6 @@
     .comment-body {
       padding: 0.75rem;
       font-size: 0.9rem;
-      white-space: pre-wrap;
       overflow-wrap: break-word;
       line-height: 1.6;
     }
@@ -593,6 +643,11 @@
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
+  }
+
+  function renderMd(text) {
+    if (!text) return '';
+    return DOMPurify.sanitize(marked.parse(text));
   }
 
   // ── Views ────────────────────────────────────────────
@@ -793,7 +848,7 @@
     return `
       <div class="section">
         <div class="section-header">Description</div>
-        <div class="detail-body">${esc(body)}</div>
+        <div class="detail-body md-body">${renderMd(body)}</div>
       </div>`;
   }
 
@@ -949,7 +1004,7 @@
               <span class="comment-author">${esc(c.user.login)}</span>
               <span class="comment-date">${fmtTime(c.created_at)}</span>
             </div>
-            <div class="comment-body">${esc(c.body || '')}</div>
+            <div class="comment-body md-body">${renderMd(c.body)}</div>
           </li>`;
 
       } else if (item.type === 'review') {
@@ -959,7 +1014,7 @@
         const inlineHtml = item.inline.map(rc => `
           <div class="inline-comment">
             <div class="comment-file-ref">on ${esc(rc.path)}${rc.line ? `:${rc.line}` : ''}</div>
-            <div class="comment-body">${esc(rc.body || '')}</div>
+            <div class="comment-body md-body">${renderMd(rc.body)}</div>
           </div>`).join('');
         return `
           <li class="comment-item">
@@ -968,7 +1023,7 @@
               <span class="comment-date">${fmtTime(r.submitted_at)}</span>
               <span class="review-badge ${badgeCls}">${badgeLabel}</span>
             </div>
-            ${r.body ? `<div class="comment-body">${esc(r.body)}</div>` : ''}
+            ${r.body ? `<div class="comment-body md-body">${renderMd(r.body)}</div>` : ''}
             ${inlineHtml}
           </li>`;
 
@@ -981,7 +1036,7 @@
               <span class="comment-date">${fmtTime(rc.created_at)}</span>
             </div>
             <div class="comment-file-ref">on ${esc(rc.path)}${rc.line ? `:${rc.line}` : ''}</div>
-            <div class="comment-body">${esc(rc.body || '')}</div>
+            <div class="comment-body md-body">${renderMd(rc.body)}</div>
           </li>`;
       }
       return '';
