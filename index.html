@@ -1034,6 +1034,47 @@
       </div>`;
   }
 
+  // Highlight codeParts (one entry per diff line, prefix stripped) as a batch
+  // so hljs has full file context. Returns one highlighted HTML string per line,
+  // with any spans that cross newline boundaries properly closed and reopened so
+  // each line is valid standalone HTML.
+  function batchHighlightLines(codeParts, lang) {
+    if (!lang || !window.hljs || !hljs.getLanguage(lang)) return null;
+    try {
+      const html = hljs.highlight(codeParts.join('\n'), { language: lang, ignoreIllegals: true }).value;
+      const lines = [];
+      let lineHtml = '';
+      let openStack = []; // opening <span ...> tags not yet closed
+      let i = 0;
+      while (i < html.length) {
+        if (html[i] === '\n') {
+          // Close all open spans, flush the line, then reopen them for next line
+          lineHtml += openStack.map(() => '</span>').join('');
+          lines.push(lineHtml);
+          lineHtml = openStack.join('');
+          i++;
+        } else if (html.startsWith('<span', i)) {
+          const end = html.indexOf('>', i) + 1;
+          const tag = html.slice(i, end);
+          openStack.push(tag);
+          lineHtml += tag;
+          i = end;
+        } else if (html.startsWith('</span>', i)) {
+          openStack.pop();
+          lineHtml += '</span>';
+          i += 7;
+        } else {
+          lineHtml += html[i++];
+        }
+      }
+      // Flush final line (hljs output has no trailing newline)
+      lineHtml += openStack.map(() => '</span>').join('');
+      lines.push(lineHtml);
+      // Only return if the line count matches (sanity check)
+      return lines.length === codeParts.length ? lines : null;
+    } catch (_) { return null; }
+  }
+
   function renderPatch(patch, filename) {
     const lang = filename ? getLanguage(filename) : null;
     const rawLines = patch.split('\n');
@@ -1055,22 +1096,25 @@
       (t === 'add' || t === 'del') && (i === types.length - 1 || types[i + 1] !== t)
     );
 
-    // Line-by-line syntax highlighting.
-    // Line-by-line avoids the unclosed-span problem that batch mode has when
-    // splitting highlighted HTML on '\n' across multi-line constructs.
-    const hl = (code) => {
-      if (!lang || !window.hljs || !hljs.getLanguage(lang)) return esc(code);
-      try {
-        return hljs.highlight(code, { language: lang, ignoreIllegals: true }).value;
-      } catch (_) { return esc(code); }
-    };
+    // Strip the diff prefix (+/-/space) from each line for highlighting.
+    const codeParts = rawLines.map(l =>
+      (l.startsWith('@@') || l === '\\ No newline at end of file') ? '' :
+      l.length > 0 ? l.slice(1) : ''
+    );
+
+    // Batch-highlight the entire patch so hljs has full context (JSX text nodes,
+    // multi-line comments/strings, etc. are classified correctly).
+    // batchHighlightLines handles the split safely by closing and reopening any
+    // spans that cross newline boundaries, so each line is self-contained HTML.
+    const hlLines = batchHighlightLines(codeParts, lang);
+    const getCode = i => hlLines ? hlLines[i] : esc(codeParts[i]);
 
     let left = 0, right = 0;
     const rows = rawLines.map((line, i) => {
       const type = types[i];
       const gs = groupStart[i] ? ' group-start' : '';
       const ge = groupEnd[i]   ? ' group-end'   : '';
-      const code = (type === 'hunk') ? '' : hl(line.length > 0 ? line.slice(1) : '');
+      const code = (type === 'hunk') ? '' : getCode(i);
 
       if (type === 'hunk') {
         const m = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)/);
