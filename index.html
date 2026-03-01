@@ -9,6 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js/highlight.min.js"></script>
   <style>
     /* Optimized for Boox Kaleido 3 color e-ink display.
        High contrast, no animations, limited color palette. */
@@ -462,10 +463,56 @@
     }
 
     .diff-line-code { padding: 0 0.5rem; white-space: pre; }
+    .diff-sign { display: inline-block; width: 1ch; user-select: none; }
 
     tr.diff-add { background: var(--diff-add-bg); }
     tr.diff-del { background: var(--diff-del-bg); }
     tr.diff-hunk { background: var(--light-bg); color: var(--muted); font-style: italic; }
+
+    /* ── Syntax highlighting theme (Kaleido 3 e-ink palette) ── */
+    /* Base */
+    .hljs                          { color: #000000; background: transparent; }
+    /* Comments — muted gray italic */
+    .hljs-comment,
+    .hljs-quote                    { color: #555555; font-style: italic; }
+    /* Keywords — deep navy bold */
+    .hljs-keyword,
+    .hljs-selector-tag,
+    .hljs-subst                    { color: #000088; font-weight: bold; }
+    /* Strings, regexps, templates — dark red */
+    .hljs-string,
+    .hljs-doctag,
+    .hljs-regexp,
+    .hljs-template-variable        { color: #880000; }
+    /* Numbers, literals, booleans — medium blue */
+    .hljs-number,
+    .hljs-literal                  { color: #0033aa; }
+    /* Function/class titles — black bold */
+    .hljs-title,
+    .hljs-title.function_,
+    .hljs-title.class_,
+    .hljs-section                  { color: #000000; font-weight: bold; }
+    /* Types, tags, class names — dark teal */
+    .hljs-type,
+    .hljs-name,
+    .hljs-tag                      { color: #004488; }
+    /* Attributes, properties, built-ins — dark green */
+    .hljs-attr,
+    .hljs-attribute,
+    .hljs-built_in,
+    .hljs-selector-attr            { color: #005500; }
+    /* Variables — standard black */
+    .hljs-variable,
+    .hljs-template-tag             { color: #000000; }
+    /* Meta, preprocessor — muted */
+    .hljs-meta,
+    .hljs-meta .hljs-keyword       { color: #555555; font-style: italic; }
+    /* Markup */
+    .hljs-bullet,
+    .hljs-symbol,
+    .hljs-link                     { color: #880000; }
+    .hljs-emphasis                 { font-style: italic; }
+    .hljs-strong                   { font-weight: bold; }
 
     .no-patch {
       padding: 0.5rem 0.75rem;
@@ -645,9 +692,49 @@
       .replace(/"/g, '&quot;');
   }
 
+  // Configure marked to syntax-highlight fenced code blocks
+  marked.use({
+    renderer: {
+      code(token) {
+        const code = typeof token === 'string' ? token : (token.text || '');
+        const lang = typeof token === 'string' ? '' : (token.lang || '');
+        const language = lang && hljs.getLanguage(lang) ? lang : null;
+        const highlighted = language
+          ? hljs.highlight(code, { language, ignoreIllegals: true }).value
+          : esc(code);
+        return `<pre><code class="hljs">${highlighted}</code></pre>`;
+      }
+    }
+  });
+
   function renderMd(text) {
     if (!text) return '';
     return DOMPurify.sanitize(marked.parse(text));
+  }
+
+  // Map file extensions to highlight.js language names
+  function getLanguage(filename) {
+    const ext = (filename.split('.').pop() || '').toLowerCase();
+    return {
+      js: 'javascript', jsx: 'javascript', mjs: 'javascript', cjs: 'javascript',
+      ts: 'typescript', tsx: 'typescript',
+      py: 'python', rb: 'ruby', go: 'go', rs: 'rust',
+      java: 'java', kt: 'kotlin', kts: 'kotlin', scala: 'scala',
+      cs: 'csharp', cpp: 'cpp', cc: 'cpp', cxx: 'cpp',
+      c: 'c', h: 'c', hpp: 'cpp',
+      css: 'css', scss: 'scss', sass: 'scss', less: 'less',
+      html: 'html', htm: 'html', xml: 'xml', svg: 'xml',
+      json: 'json', json5: 'json',
+      yaml: 'yaml', yml: 'yaml',
+      toml: 'ini', ini: 'ini',
+      sh: 'bash', bash: 'bash', zsh: 'bash', fish: 'bash',
+      sql: 'sql', graphql: 'graphql',
+      tf: 'hcl', hcl: 'hcl',
+      php: 'php', swift: 'swift',
+      r: 'r', lua: 'lua', ex: 'elixir', exs: 'elixir',
+      md: 'markdown', mdx: 'markdown',
+      dockerfile: 'dockerfile',
+    }[ext] || null;
   }
 
   // ── Views ────────────────────────────────────────────
@@ -910,7 +997,7 @@
 
     const items = files.map((f, idx) => {
       const patch = f.patch
-        ? renderPatch(f.patch)
+        ? renderPatch(f.patch, f.filename)
         : `<div class="no-patch">Binary file or no diff available</div>`;
       return `
         <li class="file-item">
@@ -935,23 +1022,45 @@
       </div>`;
   }
 
-  function renderPatch(patch) {
-    const lines = patch.split('\n');
+  function renderPatch(patch, filename) {
+    const lang = filename ? getLanguage(filename) : null;
+    const rawLines = patch.split('\n');
+
+    // Strip the diff prefix (+/-/space) from each line for highlighting.
+    // Hunk headers and no-newline markers get an empty string placeholder.
+    const codeParts = rawLines.map(l => {
+      if (l.startsWith('@@') || l === '\\ No newline at end of file') return '';
+      return l.length > 0 ? l.slice(1) : '';
+    });
+
+    // Batch-highlight the whole file content so spans have full context
+    // (multi-line strings, block comments, etc. render correctly).
+    // hljs preserves newlines in output so splitting on '\n' re-aligns 1:1.
+    let hlLines = null;
+    if (lang && window.hljs && hljs.getLanguage(lang)) {
+      try {
+        const result = hljs.highlight(codeParts.join('\n'), { language: lang, ignoreIllegals: true });
+        hlLines = result.value.split('\n');
+      } catch (e) { /* fall back to escaped plain text */ }
+    }
+
+    const getCode = i => hlLines ? hlLines[i] : esc(codeParts[i]);
+
     let left = 0, right = 0;
-    const rows = lines.map(line => {
+    const rows = rawLines.map((line, i) => {
       if (line.startsWith('@@')) {
         const m = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)/);
         if (m) { left = parseInt(m[1]) - 1; right = parseInt(m[2]) - 1; }
         return `<tr class="diff-hunk"><td class="diff-line-num" colspan="2"></td><td class="diff-line-code">${esc(line)}</td></tr>`;
       } else if (line.startsWith('+')) {
         right++;
-        return `<tr class="diff-add"><td class="diff-line-num"></td><td class="diff-line-num">${right}</td><td class="diff-line-code">${esc(line)}</td></tr>`;
+        return `<tr class="diff-add"><td class="diff-line-num"></td><td class="diff-line-num">${right}</td><td class="diff-line-code"><span class="diff-sign">+</span>${getCode(i)}</td></tr>`;
       } else if (line.startsWith('-')) {
         left++;
-        return `<tr class="diff-del"><td class="diff-line-num">${left}</td><td class="diff-line-num"></td><td class="diff-line-code">${esc(line)}</td></tr>`;
+        return `<tr class="diff-del"><td class="diff-line-num">${left}</td><td class="diff-line-num"></td><td class="diff-line-code"><span class="diff-sign">-</span>${getCode(i)}</td></tr>`;
       } else {
         left++; right++;
-        return `<tr><td class="diff-line-num">${left}</td><td class="diff-line-num">${right}</td><td class="diff-line-code">${esc(line)}</td></tr>`;
+        return `<tr><td class="diff-line-num">${left}</td><td class="diff-line-num">${right}</td><td class="diff-line-code"><span class="diff-sign"> </span>${getCode(i)}</td></tr>`;
       }
     }).join('');
     return `<table class="diff-table">${rows}</table>`;
