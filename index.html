@@ -5,22 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>E-ink PR Viewer</title>
   <style>
-    /* E-ink optimized: high contrast, no animations, no shadows, minimal color */
+    /* Optimized for Boox Kaleido 3 color e-ink display.
+       High contrast, no animations, limited color palette. */
     :root {
       --bg: #ffffff;
       --fg: #000000;
       --border: #000000;
       --muted: #444444;
       --light-bg: #f0f0f0;
+      --success: #006600;
+      --failure: #cc0000;
+      --diff-add-bg: #e8f5e9;
+      --diff-del-bg: #ffebee;
       --font-body: Georgia, "Times New Roman", serif;
       --font-mono: "Courier New", Courier, monospace;
     }
 
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       background: var(--bg);
@@ -42,7 +43,7 @@
       letter-spacing: 0.02em;
     }
 
-    /* Config form */
+    /* ── Config ── */
     #config {
       border: 2px solid var(--fg);
       padding: 1.25rem 1.5rem;
@@ -119,7 +120,12 @@
       outline: none;
     }
 
-    /* PR list */
+    button:disabled {
+      opacity: 0.3;
+      cursor: default;
+    }
+
+    /* ── Status / list ── */
     #status {
       font-family: var(--font-mono);
       font-size: 0.85rem;
@@ -128,9 +134,7 @@
       min-height: 1.4em;
     }
 
-    #pr-list {
-      list-style: none;
-    }
+    #pr-list { list-style: none; }
 
     .pr-item {
       border: 2px solid var(--fg);
@@ -146,17 +150,22 @@
       margin-bottom: 0.4rem;
     }
 
+    /* PR title is a button so it's keyboard-accessible */
     .pr-title {
+      font-family: var(--font-body);
       font-size: 1.05rem;
       font-weight: bold;
-      text-decoration: none;
       color: var(--fg);
+      background: none;
+      border: none;
+      padding: 0;
+      text-align: left;
+      cursor: pointer;
       flex: 1;
+      line-height: 1.4;
     }
 
-    .pr-title:hover {
-      text-decoration: underline;
-    }
+    .pr-title:hover { text-decoration: underline; }
 
     .pr-state {
       font-family: var(--font-mono);
@@ -170,7 +179,7 @@
       flex-shrink: 0;
     }
 
-    .pr-state.open  { background: var(--fg); color: var(--bg); }
+    .pr-state.open   { background: var(--fg); color: var(--bg); }
     .pr-state.closed { background: var(--light-bg); color: var(--fg); }
     .pr-state.merged { background: var(--fg); color: var(--bg); }
 
@@ -186,7 +195,6 @@
 
     .pr-body {
       font-size: 0.9rem;
-      color: var(--fg);
       border-left: 3px solid var(--muted);
       padding-left: 0.75rem;
       margin-top: 0.75rem;
@@ -201,7 +209,7 @@
       margin-top: 0.6rem;
     }
 
-    .label {
+    .label-tag {
       font-family: var(--font-mono);
       font-size: 0.7rem;
       border: 1px solid var(--fg);
@@ -209,18 +217,6 @@
       text-transform: uppercase;
       letter-spacing: 0.04em;
     }
-
-    .pr-stats {
-      font-family: var(--font-mono);
-      font-size: 0.78rem;
-      margin-top: 0.6rem;
-      display: flex;
-      gap: 1rem;
-      flex-wrap: wrap;
-    }
-
-    .diff-add { }
-    .diff-del { }
 
     #pagination {
       display: flex;
@@ -231,14 +227,7 @@
       font-size: 0.85rem;
     }
 
-    #pagination button {
-      padding: 0.4rem 0.9rem;
-    }
-
-    #pagination button:disabled {
-      opacity: 0.3;
-      cursor: default;
-    }
+    #pagination button { padding: 0.4rem 0.9rem; }
 
     .empty {
       font-family: var(--font-mono);
@@ -249,9 +238,261 @@
       border: 2px dashed var(--muted);
     }
 
+    /* ── Detail view ── */
+    #list-view.hidden  { display: none; }
+    #detail-view       { display: none; }
+    #detail-view.active { display: block; }
+
+    .back-btn {
+      display: inline-block;
+      margin-bottom: 1.5rem;
+      padding: 0.35rem 0.9rem;
+    }
+
+    .detail-title-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 1rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .detail-title {
+      font-size: 1.4rem;
+      font-weight: bold;
+      flex: 1;
+      line-height: 1.3;
+    }
+
+    .detail-meta {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0 1.2rem;
+      margin-bottom: 0.4rem;
+    }
+
+    .branch-info {
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-top: 0.3rem;
+    }
+
+    .github-link {
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: var(--fg);
+      margin-top: 0.6rem;
+      display: inline-block;
+    }
+
+    /* ── Sections ── */
+    .section { margin-top: 2rem; }
+
+    .section-header {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-weight: bold;
+      border-bottom: 2px solid var(--fg);
+      padding-bottom: 0.3rem;
+      margin-bottom: 1rem;
+    }
+
+    /* Description */
+    .detail-body {
+      font-size: 0.95rem;
+      white-space: pre-wrap;
+      overflow-wrap: break-word;
+      line-height: 1.7;
+      border-left: 3px solid var(--muted);
+      padding-left: 1rem;
+    }
+
+    /* ── Checks ── */
+    .check-list { list-style: none; }
+
+    .check-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid var(--light-bg);
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+    }
+
+    .check-item:last-child { border-bottom: none; }
+
+    .check-icon { flex-shrink: 0; width: 1.2em; font-size: 1rem; }
+    .check-icon.success { color: var(--success); }
+    .check-icon.failure { color: var(--failure); }
+    .check-icon.pending { color: var(--muted); }
+
+    .check-name { flex: 1; font-weight: bold; }
+
+    .check-conclusion {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .check-conclusion.success { color: var(--success); }
+    .check-conclusion.failure { color: var(--failure); }
+    .check-conclusion.pending { color: var(--muted); }
+
+    .check-duration { color: var(--muted); font-size: 0.72rem; }
+
+    /* ── Files changed ── */
+    .files-summary {
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+    }
+
+    .file-list { list-style: none; }
+
+    .file-item {
+      border: 1px solid var(--border);
+      margin-bottom: 0.75rem;
+    }
+
+    .file-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.5rem 0.75rem;
+      background: var(--light-bg);
+      cursor: pointer;
+    }
+
+    .file-name {
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      font-weight: bold;
+      flex: 1;
+      word-break: break-all;
+    }
+
+    .file-stats { font-family: var(--font-mono); font-size: 0.75rem; white-space: nowrap; }
+    .adds { color: var(--success); }
+    .dels { color: var(--failure); }
+
+    .file-toggle {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .file-diff { display: none; overflow-x: auto; }
+    .file-diff.expanded { display: block; }
+
+    .diff-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      line-height: 1.5;
+    }
+
+    .diff-line-num {
+      padding: 0 0.4rem;
+      color: var(--muted);
+      user-select: none;
+      text-align: right;
+      min-width: 2.5em;
+      border-right: 1px solid var(--light-bg);
+      white-space: nowrap;
+    }
+
+    .diff-line-code { padding: 0 0.5rem; white-space: pre; }
+
+    tr.diff-add { background: var(--diff-add-bg); }
+    tr.diff-del { background: var(--diff-del-bg); }
+    tr.diff-hunk { background: var(--light-bg); color: var(--muted); font-style: italic; }
+
+    .no-patch {
+      padding: 0.5rem 0.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    /* ── Conversation ── */
+    .conversation-list { list-style: none; }
+
+    .comment-item {
+      border: 1px solid var(--border);
+      margin-bottom: 1rem;
+    }
+
+    .comment-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.3rem;
+      padding: 0.4rem 0.75rem;
+      background: var(--light-bg);
+      border-bottom: 1px solid var(--border);
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+    }
+
+    .comment-author { font-weight: bold; }
+    .comment-date { color: var(--muted); }
+
+    .review-badge {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border: 1px solid currentColor;
+      padding: 0.1rem 0.4rem;
+    }
+
+    .review-badge.approved         { color: var(--success); }
+    .review-badge.changes_requested { color: var(--failure); }
+    .review-badge.commented        { color: var(--muted); }
+    .review-badge.dismissed        { color: var(--muted); }
+
+    .comment-file-ref {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--muted);
+      padding: 0.25rem 0.75rem;
+      border-bottom: 1px solid var(--light-bg);
+      font-style: italic;
+    }
+
+    .comment-body {
+      padding: 0.75rem;
+      font-size: 0.9rem;
+      white-space: pre-wrap;
+      overflow-wrap: break-word;
+      line-height: 1.6;
+    }
+
+    .inline-comment {
+      border-top: 1px solid var(--light-bg);
+    }
+
+    .loading-msg {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      color: var(--muted);
+      padding: 1.5rem 0;
+    }
+
     @media (max-width: 600px) {
       body { font-size: 16px; padding: 1rem; }
-      .pr-header { flex-direction: column; gap: 0.4rem; }
+      .pr-header, .detail-title-row { flex-direction: column; gap: 0.4rem; }
     }
   </style>
 </head>
@@ -284,18 +525,27 @@
   </div>
 </div>
 
-<div id="status"></div>
-<ul id="pr-list"></ul>
-<div id="pagination" style="display:none">
-  <button id="prev-btn" disabled onclick="loadPRs(currentPage - 1)">&#8592; Prev</button>
-  <span id="page-label"></span>
-  <button id="next-btn" disabled onclick="loadPRs(currentPage + 1)">Next &#8594;</button>
+<!-- List View -->
+<div id="list-view">
+  <div id="status"></div>
+  <ul id="pr-list"></ul>
+  <div id="pagination" style="display:none">
+    <button id="prev-btn" disabled onclick="loadPRs(currentPage - 1)">&#8592; Prev</button>
+    <span id="page-label"></span>
+    <button id="next-btn" disabled onclick="loadPRs(currentPage + 1)">Next &#8594;</button>
+  </div>
+</div>
+
+<!-- Detail View -->
+<div id="detail-view">
+  <button class="back-btn" onclick="showList()">&#8592; Back to list</button>
+  <div id="detail-content"></div>
 </div>
 
 <script>
   const PER_PAGE = 20;
   let currentPage = 1;
-  let totalCount = 0;
+  let currentRepo = '';
 
   // Restore saved values
   const savedRepo = localStorage.getItem('eink-repo');
@@ -303,32 +553,62 @@
   if (savedRepo) document.getElementById('repo-input').value = savedRepo;
   if (savedState) document.getElementById('state-select').value = savedState;
 
-  // Allow pressing Enter to load
   document.getElementById('repo-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') loadPRs(1);
   });
 
   function apiHeaders() {
     const token = document.getElementById('token-input').value.trim();
-    const headers = { 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    return headers;
+    const h = { 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
+    if (token) h['Authorization'] = `Bearer ${token}`;
+    return h;
   }
 
   function setStatus(msg) {
     document.getElementById('status').textContent = msg;
   }
 
-  function formatDate(iso) {
+  function fmt(iso) {
     if (!iso) return '';
     const d = new Date(iso);
     return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   }
 
-  function stateLabel(pr) {
-    if (pr.pull_request && pr.pull_request.merged_at) return 'merged';
-    return pr.state; // 'open' or 'closed'
+  function fmtTime(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+      + ' ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
   }
+
+  function stateLabel(pr) {
+    if (pr.merged_at || (pr.pull_request && pr.pull_request.merged_at)) return 'merged';
+    return pr.state;
+  }
+
+  function esc(str) {
+    if (str == null) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // ── Views ────────────────────────────────────────────
+
+  function showList() {
+    document.getElementById('list-view').classList.remove('hidden');
+    document.getElementById('detail-view').classList.remove('active');
+    document.title = 'E-ink PR Viewer';
+  }
+
+  function showDetail() {
+    document.getElementById('list-view').classList.add('hidden');
+    document.getElementById('detail-view').classList.add('active');
+  }
+
+  // ── List View ────────────────────────────────────────
 
   async function loadPRs(page) {
     const repo = document.getElementById('repo-input').value.trim();
@@ -341,14 +621,13 @@
 
     localStorage.setItem('eink-repo', repo);
     localStorage.setItem('eink-state', state);
-
+    currentRepo = repo;
     currentPage = page;
     setStatus('Loading...');
     document.getElementById('pr-list').innerHTML = '';
     document.getElementById('pagination').style.display = 'none';
 
     try {
-      // Use issues API so we get full count for pagination
       const url = `https://api.github.com/repos/${repo}/pulls?state=${state}&per_page=${PER_PAGE}&page=${page}&sort=updated&direction=desc`;
       const res = await fetch(url, { headers: apiHeaders() });
 
@@ -359,14 +638,11 @@
       }
 
       const prs = await res.json();
-
-      // Get total count from Link header
       const link = res.headers.get('Link') || '';
       const lastMatch = link.match(/[?&]page=(\d+)>; rel="last"/);
       const lastPage = lastMatch ? parseInt(lastMatch[1]) : page;
-      totalCount = lastPage * PER_PAGE; // approximation
 
-      renderPRs(prs, repo, page, lastPage);
+      renderPRs(prs, page, lastPage);
     } catch (e) {
       setStatus(`Network error: ${e.message}`);
     }
@@ -379,7 +655,7 @@
     return stripped.slice(0, maxLen).replace(/\s+\S*$/, '') + '…';
   }
 
-  function renderPRs(prs, repo, page, lastPage) {
+  function renderPRs(prs, page, lastPage) {
     const list = document.getElementById('pr-list');
 
     if (prs.length === 0) {
@@ -393,53 +669,336 @@
     list.innerHTML = prs.map(pr => {
       const state = stateLabel(pr);
       const labels = (pr.labels || []).map(l =>
-        `<span class="label">${escHtml(l.name)}</span>`
+        `<span class="label-tag">${esc(l.name)}</span>`
       ).join('');
-      const bodySnippet = truncateBody(pr.body);
-      const bodyHtml = bodySnippet
-        ? `<div class="pr-body">${escHtml(bodySnippet)}</div>`
-        : '';
-      const labelsHtml = labels ? `<div class="pr-labels">${labels}</div>` : '';
+      const snippet = truncateBody(pr.body);
 
       return `
         <li class="pr-item">
           <div class="pr-header">
-            <a class="pr-title" href="${pr.html_url}" target="_blank" rel="noopener">#${pr.number} ${escHtml(pr.title)}</a>
+            <button class="pr-title" onclick="loadDetail(${pr.number})">#${pr.number} ${esc(pr.title)}</button>
             <span class="pr-state ${state}">${state}</span>
           </div>
           <div class="pr-meta">
-            <span>by ${escHtml(pr.user.login)}</span>
-            <span>opened ${formatDate(pr.created_at)}</span>
-            ${state !== 'open' ? `<span>closed ${formatDate(pr.closed_at)}</span>` : ''}
-            <span>updated ${formatDate(pr.updated_at)}</span>
+            <span>by ${esc(pr.user.login)}</span>
+            <span>opened ${fmt(pr.created_at)}</span>
+            ${state !== 'open' ? `<span>closed ${fmt(pr.closed_at)}</span>` : ''}
+            <span>updated ${fmt(pr.updated_at)}</span>
             <span>${pr.comments} comment${pr.comments !== 1 ? 's' : ''}</span>
           </div>
-          ${labelsHtml}
-          ${bodyHtml}
+          ${labels ? `<div class="pr-labels">${labels}</div>` : ''}
+          ${snippet ? `<div class="pr-body">${esc(snippet)}</div>` : ''}
         </li>`;
     }).join('');
 
-    // Pagination
-    const pag = document.getElementById('pagination');
-    const prevBtn = document.getElementById('prev-btn');
-    const nextBtn = document.getElementById('next-btn');
     document.getElementById('page-label').textContent = `Page ${page} / ${lastPage}`;
-    prevBtn.disabled = page <= 1;
-    nextBtn.disabled = page >= lastPage;
-    pag.style.display = 'flex';
+    document.getElementById('prev-btn').disabled = page <= 1;
+    document.getElementById('next-btn').disabled = page >= lastPage;
+    document.getElementById('pagination').style.display = 'flex';
   }
 
-  function escHtml(str) {
-    if (str == null) return '';
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+  // ── Detail View ──────────────────────────────────────
+
+  async function loadDetail(prNumber) {
+    const repo = currentRepo || document.getElementById('repo-input').value.trim();
+    if (!repo) return;
+
+    showDetail();
+    document.getElementById('detail-content').innerHTML =
+      `<div class="loading-msg">Loading PR #${prNumber}…</div>`;
+    document.title = `PR #${prNumber} — E-ink PR Viewer`;
+
+    try {
+      // Fetch PR details first — need head SHA for check-runs
+      const prRes = await fetch(
+        `https://api.github.com/repos/${repo}/pulls/${prNumber}`,
+        { headers: apiHeaders() }
+      );
+      if (!prRes.ok) throw new Error(`PR fetch failed: ${prRes.status}`);
+      const pr = await prRes.json();
+
+      // Fan out
+      const [reviewsRes, reviewCommentsRes, issueCommentsRes, checksRes, filesRes] =
+        await Promise.all([
+          fetch(`https://api.github.com/repos/${repo}/pulls/${prNumber}/reviews?per_page=100`, { headers: apiHeaders() }),
+          fetch(`https://api.github.com/repos/${repo}/pulls/${prNumber}/comments?per_page=100`, { headers: apiHeaders() }),
+          fetch(`https://api.github.com/repos/${repo}/issues/${prNumber}/comments?per_page=100`, { headers: apiHeaders() }),
+          fetch(`https://api.github.com/repos/${repo}/commits/${pr.head.sha}/check-runs?per_page=100`, { headers: apiHeaders() }),
+          fetch(`https://api.github.com/repos/${repo}/pulls/${prNumber}/files?per_page=100`, { headers: apiHeaders() }),
+        ]);
+
+      const [reviews, reviewComments, issueComments, checksData, files] = await Promise.all([
+        reviewsRes.ok       ? reviewsRes.json()       : [],
+        reviewCommentsRes.ok ? reviewCommentsRes.json() : [],
+        issueCommentsRes.ok  ? issueCommentsRes.json()  : [],
+        checksRes.ok         ? checksRes.json()         : { check_runs: [] },
+        filesRes.ok          ? filesRes.json()          : [],
+      ]);
+
+      renderDetail(pr, reviews, reviewComments, issueComments,
+                   checksData.check_runs || [], files);
+    } catch (e) {
+      document.getElementById('detail-content').innerHTML =
+        `<div class="loading-msg">Error: ${esc(e.message)}</div>`;
+    }
+  }
+
+  function renderDetail(pr, reviews, reviewComments, issueComments, checkRuns, files) {
+    const state = stateLabel(pr);
+    const labels = (pr.labels || []).map(l =>
+      `<span class="label-tag">${esc(l.name)}</span>`
+    ).join('');
+
+    const conversation = buildConversation(reviews, reviewComments, issueComments);
+
+    document.getElementById('detail-content').innerHTML = `
+      <div class="detail-header">
+        <div class="detail-title-row">
+          <div class="detail-title">#${pr.number} ${esc(pr.title)}</div>
+          <span class="pr-state ${state}">${state}</span>
+        </div>
+        <div class="detail-meta">
+          <span>by ${esc(pr.user.login)}</span>
+          <span>opened ${fmt(pr.created_at)}</span>
+          ${pr.closed_at ? `<span>closed ${fmt(pr.closed_at)}</span>` : ''}
+          ${pr.merged_at ? `<span>merged ${fmt(pr.merged_at)}</span>` : ''}
+          <span>updated ${fmt(pr.updated_at)}</span>
+        </div>
+        <div class="branch-info">${esc(pr.base.label)} ← ${esc(pr.head.label)}</div>
+        ${labels ? `<div class="pr-labels" style="margin-top:0.5rem">${labels}</div>` : ''}
+        <a class="github-link" href="${esc(pr.html_url)}" target="_blank" rel="noopener">&#8599; Open on GitHub</a>
+      </div>
+      ${renderDescription(pr)}
+      ${renderChecks(checkRuns)}
+      ${renderFiles(files)}
+      ${renderConversation(conversation)}
+    `;
+
+    // Attach expand/collapse handlers for file diffs
+    document.querySelectorAll('.file-header').forEach(header => {
+      header.addEventListener('click', () => {
+        const diff = header.nextElementSibling;
+        const toggle = header.querySelector('.file-toggle');
+        diff.classList.toggle('expanded');
+        toggle.textContent = diff.classList.contains('expanded') ? '[collapse]' : '[expand]';
+      });
+    });
+  }
+
+  // ── Detail sections ──────────────────────────────────
+
+  function renderDescription(pr) {
+    const body = pr.body ? pr.body.replace(/<!--[\s\S]*?-->/g, '').trim() : '';
+    if (!body) return '';
+    return `
+      <div class="section">
+        <div class="section-header">Description</div>
+        <div class="detail-body">${esc(body)}</div>
+      </div>`;
+  }
+
+  function renderChecks(checkRuns) {
+    if (!checkRuns.length) return '';
+
+    function conclusionInfo(conclusion, status) {
+      if (status === 'in_progress' || status === 'queued' || status === 'waiting')
+        return { icon: '○', cls: 'pending' };
+      switch (conclusion) {
+        case 'success':                    return { icon: '✓', cls: 'success' };
+        case 'failure':
+        case 'timed_out':
+        case 'cancelled':                  return { icon: '✗', cls: 'failure' };
+        case 'skipped':
+        case 'neutral':                    return { icon: '—', cls: 'pending' };
+        default:                           return { icon: '○', cls: 'pending' };
+      }
+    }
+
+    const passed  = checkRuns.filter(r => r.conclusion === 'success').length;
+    const failed  = checkRuns.filter(r => r.conclusion === 'failure' || r.conclusion === 'timed_out' || r.conclusion === 'cancelled').length;
+    const pending = checkRuns.filter(r => !r.conclusion || r.status === 'in_progress' || r.status === 'queued').length;
+    const summary = [
+      passed  ? `${passed} passed`  : '',
+      failed  ? `${failed} failed`  : '',
+      pending ? `${pending} pending` : '',
+    ].filter(Boolean).join(' · ') || `${checkRuns.length} total`;
+
+    const items = checkRuns.map(run => {
+      const { icon, cls } = conclusionInfo(run.conclusion, run.status);
+      let duration = '';
+      if (run.completed_at && run.started_at) {
+        const s = Math.round((new Date(run.completed_at) - new Date(run.started_at)) / 1000);
+        duration = s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
+      }
+      const conc = run.conclusion || run.status || '';
+      return `
+        <li class="check-item">
+          <span class="check-icon ${cls}">${icon}</span>
+          <span class="check-name">${esc(run.name)}</span>
+          ${duration ? `<span class="check-duration">${duration}</span>` : ''}
+          <span class="check-conclusion ${cls}">${conc}</span>
+        </li>`;
+    }).join('');
+
+    return `
+      <div class="section">
+        <div class="section-header">Checks — ${summary}</div>
+        <ul class="check-list">${items}</ul>
+      </div>`;
+  }
+
+  function renderFiles(files) {
+    if (!files.length) return '';
+
+    const totalAdd = files.reduce((s, f) => s + f.additions, 0);
+    const totalDel = files.reduce((s, f) => s + f.deletions, 0);
+
+    const items = files.map((f, idx) => {
+      const patch = f.patch
+        ? renderPatch(f.patch)
+        : `<div class="no-patch">Binary file or no diff available</div>`;
+      return `
+        <li class="file-item">
+          <div class="file-header">
+            <span class="file-name">${esc(f.filename)}</span>
+            <span class="file-stats">
+              <span class="adds">+${f.additions}</span>&nbsp;<span class="dels">-${f.deletions}</span>
+            </span>
+            <span class="file-toggle">[expand]</span>
+          </div>
+          <div class="file-diff">${patch}</div>
+        </li>`;
+    }).join('');
+
+    return `
+      <div class="section">
+        <div class="section-header">
+          Files Changed — ${files.length} file${files.length !== 1 ? 's' : ''}
+          &nbsp;<span class="adds">+${totalAdd}</span>&nbsp;<span class="dels">-${totalDel}</span>
+        </div>
+        <ul class="file-list">${items}</ul>
+      </div>`;
+  }
+
+  function renderPatch(patch) {
+    const lines = patch.split('\n');
+    let left = 0, right = 0;
+    const rows = lines.map(line => {
+      if (line.startsWith('@@')) {
+        const m = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)/);
+        if (m) { left = parseInt(m[1]) - 1; right = parseInt(m[2]) - 1; }
+        return `<tr class="diff-hunk"><td class="diff-line-num" colspan="2"></td><td class="diff-line-code">${esc(line)}</td></tr>`;
+      } else if (line.startsWith('+')) {
+        right++;
+        return `<tr class="diff-add"><td class="diff-line-num"></td><td class="diff-line-num">${right}</td><td class="diff-line-code">${esc(line)}</td></tr>`;
+      } else if (line.startsWith('-')) {
+        left++;
+        return `<tr class="diff-del"><td class="diff-line-num">${left}</td><td class="diff-line-num"></td><td class="diff-line-code">${esc(line)}</td></tr>`;
+      } else {
+        left++; right++;
+        return `<tr><td class="diff-line-num">${left}</td><td class="diff-line-num">${right}</td><td class="diff-line-code">${esc(line)}</td></tr>`;
+      }
+    }).join('');
+    return `<table class="diff-table">${rows}</table>`;
+  }
+
+  // ── Conversation ─────────────────────────────────────
+
+  function buildConversation(reviews, reviewComments, issueComments) {
+    // Group review comments by their parent review id
+    const byReview = {};
+    reviewComments.forEach(rc => {
+      const key = rc.pull_request_review_id || 'orphan';
+      (byReview[key] = byReview[key] || []).push(rc);
+    });
+
+    const items = [];
+
+    issueComments.forEach(c =>
+      items.push({ type: 'comment', at: c.created_at, data: c })
+    );
+
+    reviews.forEach(r => {
+      if (r.state === 'PENDING') return;
+      items.push({
+        type: 'review',
+        at: r.submitted_at,
+        data: r,
+        inline: byReview[r.id] || [],
+      });
+    });
+
+    // Orphaned review comments (no matching review)
+    (byReview['orphan'] || []).forEach(rc =>
+      items.push({ type: 'review_comment', at: rc.created_at, data: rc })
+    );
+
+    items.sort((a, b) => new Date(a.at) - new Date(b.at));
+    return items;
+  }
+
+  function renderConversation(items) {
+    if (!items.length) return '';
+
+    const html = items.map(item => {
+      if (item.type === 'comment') {
+        const c = item.data;
+        return `
+          <li class="comment-item">
+            <div class="comment-header">
+              <span class="comment-author">${esc(c.user.login)}</span>
+              <span class="comment-date">${fmtTime(c.created_at)}</span>
+            </div>
+            <div class="comment-body">${esc(c.body || '')}</div>
+          </li>`;
+
+      } else if (item.type === 'review') {
+        const r = item.data;
+        const badgeCls = r.state.toLowerCase();
+        const badgeLabel = r.state.replace(/_/g, ' ');
+        const inlineHtml = item.inline.map(rc => `
+          <div class="inline-comment">
+            <div class="comment-file-ref">on ${esc(rc.path)}${rc.line ? `:${rc.line}` : ''}</div>
+            <div class="comment-body">${esc(rc.body || '')}</div>
+          </div>`).join('');
+        return `
+          <li class="comment-item">
+            <div class="comment-header">
+              <span class="comment-author">${esc(r.user.login)}</span>
+              <span class="comment-date">${fmtTime(r.submitted_at)}</span>
+              <span class="review-badge ${badgeCls}">${badgeLabel}</span>
+            </div>
+            ${r.body ? `<div class="comment-body">${esc(r.body)}</div>` : ''}
+            ${inlineHtml}
+          </li>`;
+
+      } else if (item.type === 'review_comment') {
+        const rc = item.data;
+        return `
+          <li class="comment-item">
+            <div class="comment-header">
+              <span class="comment-author">${esc(rc.user.login)}</span>
+              <span class="comment-date">${fmtTime(rc.created_at)}</span>
+            </div>
+            <div class="comment-file-ref">on ${esc(rc.path)}${rc.line ? `:${rc.line}` : ''}</div>
+            <div class="comment-body">${esc(rc.body || '')}</div>
+          </li>`;
+      }
+      return '';
+    }).join('');
+
+    return `
+      <div class="section">
+        <div class="section-header">Conversation — ${items.length} item${items.length !== 1 ? 's' : ''}</div>
+        <ul class="conversation-list">${html}</ul>
+      </div>`;
   }
 
   // Auto-load if repo is saved
-  if (savedRepo) loadPRs(1);
+  if (savedRepo) {
+    currentRepo = savedRepo;
+    loadPRs(1);
+  }
 </script>
 </body>
 </html>
