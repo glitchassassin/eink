@@ -446,8 +446,7 @@
 
     .diff-table {
       width: 100%;
-      border-collapse: separate;
-      border-spacing: 0;
+      border-collapse: collapse;
       font-family: var(--font-mono);
       font-size: 0.75rem;
       line-height: 1.5;
@@ -1017,9 +1016,9 @@
             <span class="file-stats">
               <span class="adds">+${f.additions}</span>&nbsp;<span class="dels">-${f.deletions}</span>
             </span>
-            <span class="file-toggle">[expand]</span>
+            <span class="file-toggle">[collapse]</span>
           </div>
-          <div class="file-diff">${patch}</div>
+          <div class="file-diff expanded">${patch}</div>
         </li>`;
     }).join('');
 
